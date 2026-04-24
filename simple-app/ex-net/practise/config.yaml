@@ -1,0 +1,28 @@
+server:
+  port: "8080"
+  host: "localhost"
+  mode: "debug"  # debug, release, test
+
+dataTypeCon:
+  dataType: "mysql"
+
+sqliteCon:
+  filename: "mytest.db"
+
+mysqlCon:
+  host: "localhost"
+  port: 3306
+  username: "root"
+  password: "root"
+  dbname: "myapp"
+
+progresCon:
+  host: "localhost"
+  port: 3306
+  username: "root"
+  password: "password"
+  dbname: "myapp"
+
+jwt:
+  secret: "your-secret-key-change-in-production"
+  expire: "24"
