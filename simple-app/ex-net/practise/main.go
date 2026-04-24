@@ -18,7 +18,7 @@ import (
 	"gorm.io/gorm"
 )
 
-var db gorm.DB
+var db *gorm.DB
 
 var config model.Config
 
@@ -105,6 +105,8 @@ func main() {
 		api.PUT("/tag/:id", updateTag)
 		api.GET("/tag/:id", getTag)
 		api.GET("/tags", getTags)
+		api.POST("/posts", createPost)
+
 		api.GET("/protected", func(c *gin.Context) {
 			userID, _ := c.Get("userID")
 			username, _ := c.Get("username")
@@ -283,6 +285,100 @@ func getTags(c *gin.Context) {
 	})
 }
 
+// ========== post接口 ==========
+func createPost(c *gin.Context) {
+	var req struct {
+		Name string `json:"name" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		errorResponse(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	var tag = model.Tag{}
+	tag.Name = req.Name
+	if err := db.Create(&tag).Error; err != nil {
+		errorResponse(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	success(c, gin.H{
+		"tag": tag,
+	})
+}
+
+func updatePost(c *gin.Context) {
+	var req struct {
+		Title   string `json:"title" binding:"required"`
+		Content string `json:"content" binding:"required"`
+		Tags    []int  `json:"tags"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		errorResponse(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		errorResponse(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	var post = model.Post{}
+	var tags []model.Tag
+	post.Title = req.Title
+	post.Content = req.Content
+	post.ID = uint(id)
+	tagids := req.Tags
+	if tagids != nil {
+		for _, tagid := range tagids {
+			tag := model.Tag{}
+			tag.ID = uint(tagid)
+			tags = append(tags, tag)
+		}
+		post.Tags = tags
+	}
+
+	if err := db.Model(&post).Updates(&post).Error; err != nil {
+		errorResponse(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	success(c, gin.H{
+		"tag": tag,
+	})
+}
+
+func getPost(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		errorResponse(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	var post = model.Post{}
+	post.ID = uint(id)
+	if err := db.Model(&post).First(&post).Error; err != nil {
+		errorResponse(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	success(c, gin.H{
+		"post": post,
+	})
+}
+
+func getPosts(c *gin.Context) {
+	var posts []model.Post
+	if err := db.Find(&posts).Error; err != nil {
+		errorResponse(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	success(c, gin.H{
+		"posts": posts,
+	})
+}
+
 // ========== 登录接口 ==========
 func login(c *gin.Context) {
 	var req struct {
@@ -291,7 +387,7 @@ func login(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		errorResponse(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -304,13 +400,11 @@ func login(c *gin.Context) {
 
 	token, err := generateToken(us.ID, us.Name)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to generate token",
-		})
+		errorResponse(c, http.StatusInternalServerError, "Failed to generate token")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	success(c, gin.H{
 		"token": token,
 		"user": gin.H{
 			"id":       us.ID,
