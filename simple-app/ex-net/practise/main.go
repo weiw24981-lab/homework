@@ -288,7 +288,9 @@ func getTags(c *gin.Context) {
 // ========== post接口 ==========
 func createPost(c *gin.Context) {
 	var req struct {
-		Name string `json:"name" binding:"required"`
+		Title   string `json:"title" binding:"required"`
+		Content string `json:"content" binding:"required"`
+		Tags    []int  `json:"tags"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -296,15 +298,26 @@ func createPost(c *gin.Context) {
 		return
 	}
 
-	var tag = model.Tag{}
-	tag.Name = req.Name
-	if err := db.Create(&tag).Error; err != nil {
+	var post = model.Post{}
+	var tags []model.Tag
+	post.Title = req.Title
+	post.Content = req.Content
+	tagids := req.Tags
+	if tagids != nil {
+		for _, tagid := range tagids {
+			tag := model.Tag{}
+			tag.ID = uint(tagid)
+			tags = append(tags, tag)
+		}
+		post.Tags = tags
+	}
+	if err := db.Create(&post).Error; err != nil {
 		errorResponse(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	success(c, gin.H{
-		"tag": tag,
+		"post": post,
 	})
 }
 
@@ -345,7 +358,7 @@ func updatePost(c *gin.Context) {
 	}
 
 	success(c, gin.H{
-		"tag": tag,
+		"post": post,
 	})
 }
 
