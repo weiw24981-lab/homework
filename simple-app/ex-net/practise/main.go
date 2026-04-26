@@ -73,7 +73,7 @@ type Claims struct {
 func main() {
 	config, err := LoadConfig()
 
-	db := dbfactory.NewTestDB(config)
+	db = dbfactory.NewTestDB(config)
 	if err := db.AutoMigrate(&model.User{}, &model.Post{}, &model.Comment{}, &model.Tag{}); err != nil {
 		log.Fatalf("auto migrate: %v", err)
 	}
