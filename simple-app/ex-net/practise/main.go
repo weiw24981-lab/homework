@@ -532,7 +532,7 @@ func getProfile(c *gin.Context) {
 	userID, _ := c.Get("userID")
 	username, _ := c.Get("username")
 
-	//log.Fatalf("this is a test")
+	log.Fatalf("this is a test")
 	log.Printf("test log")
 	c.JSON(http.StatusOK, gin.H{
 		"id":       userID,
