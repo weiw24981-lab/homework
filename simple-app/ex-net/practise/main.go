@@ -93,9 +93,6 @@ func main() {
 
 	// ========== 公开路由 ==========
 	r.POST("/api/login", login)
-	r.GET("/api/public", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "public endpoint"})
-	})
 
 	// ========== 需要认证的路由 ==========
 	api := r.Group("/api")
@@ -105,19 +102,17 @@ func main() {
 		api.PUT("/tag/:id", updateTag)
 		api.GET("/tag/:id", getTag)
 		api.GET("/tags", getTags)
+
 		api.POST("/posts", createPost)
+		api.PUT("/post/:id", updatePost)
+		api.GET("/post/:id", getPost)
+		api.GET("/posts", getPosts)
 
-		api.GET("/protected", func(c *gin.Context) {
-			userID, _ := c.Get("userID")
-			username, _ := c.Get("username")
-			c.JSON(http.StatusOK, gin.H{
-				"message":  "protected endpoint",
-				"user_id":  userID,
-				"username": username,
-			})
-		})
+		api.POST("/post/:id/comments", createComment)
+		api.PUT("/comment/:id", updateComment)
+		api.GET("/comment/:id", getComment)
+		api.GET("/post/:id/comments", getCommentsByPostId)
 
-		api.GET("/profile", getProfile)
 	}
 
 	addr := fmt.Sprintf("%s:%s", config.Server.Host, config.Server.Port)
@@ -139,7 +134,7 @@ func generateToken(userID uint, username string) (string, error) {
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(config.JWT.Secret)
+	return token.SignedString([]byte(config.JWT.Secret))
 }
 
 // ========== 解析 Token ==========
@@ -148,7 +143,7 @@ func parseToken(tokenString string) (*Claims, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, errors.New("unexpected signing method")
 		}
-		return config.JWT.Secret, nil
+		return []byte(config.JWT.Secret), nil
 	})
 
 	if err != nil {
@@ -275,7 +270,7 @@ func getTag(c *gin.Context) {
 
 func getTags(c *gin.Context) {
 	var tags []model.Tag
-	if err := db.Find(&tags).Error; err != nil {
+	if err := db.Preload("Posts").Find(&tags).Error; err != nil {
 		errorResponse(c, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -311,6 +306,7 @@ func createPost(c *gin.Context) {
 		}
 		post.Tags = tags
 	}
+	post.UserID = c.GetUint("userID")
 	if err := db.Create(&post).Error; err != nil {
 		errorResponse(c, http.StatusBadRequest, err.Error())
 		return
@@ -351,7 +347,7 @@ func updatePost(c *gin.Context) {
 		}
 		post.Tags = tags
 	}
-
+	post.UserID = c.GetUint("userID")
 	if err := db.Model(&post).Updates(&post).Error; err != nil {
 		errorResponse(c, http.StatusBadRequest, err.Error())
 		return
@@ -382,13 +378,114 @@ func getPost(c *gin.Context) {
 
 func getPosts(c *gin.Context) {
 	var posts []model.Post
-	if err := db.Find(&posts).Error; err != nil {
+	if err := db.Preload("Tags").Find(&posts).Error; err != nil {
 		errorResponse(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	success(c, gin.H{
 		"posts": posts,
+	})
+}
+
+// ========== comment接口 ==========
+func createComment(c *gin.Context) {
+	var req struct {
+		Content string `json:"content" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		errorResponse(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	var comment = model.Comment{}
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		errorResponse(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	comment.Content = req.Content
+	comment.PostID = uint(id)
+	comment.UserID = c.GetUint("userID")
+	if err := db.Create(&comment).Error; err != nil {
+		errorResponse(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	success(c, gin.H{
+		"comment": comment,
+	})
+}
+
+func updateComment(c *gin.Context) {
+	var req struct {
+		Content string `json:"content" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		errorResponse(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		errorResponse(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	var comment = model.Comment{}
+	comment.ID = uint(id)
+	if err := db.Model(&comment).First(&comment).Error; err != nil {
+		errorResponse(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	comment.Content = req.Content
+
+	if err := db.Model(&comment).Updates(&comment).Error; err != nil {
+		errorResponse(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	success(c, gin.H{
+		"comment": comment,
+	})
+}
+
+func getComment(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		errorResponse(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	var comment = model.Comment{}
+	comment.ID = uint(id)
+	if err := db.Model(&comment).First(&comment).Error; err != nil {
+		errorResponse(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	success(c, gin.H{
+		"comment": comment,
+	})
+}
+
+func getCommentsByPostId(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+
+		errorResponse(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	var comments []model.Comment
+	if err := db.Where("post_id", id).Find(&comments).Error; err != nil {
+		errorResponse(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	success(c, gin.H{
+		"comments": comments,
 	})
 }
 
@@ -435,6 +532,8 @@ func getProfile(c *gin.Context) {
 	userID, _ := c.Get("userID")
 	username, _ := c.Get("username")
 
+	//log.Fatalf("this is a test")
+	log.Printf("test log")
 	c.JSON(http.StatusOK, gin.H{
 		"id":       userID,
 		"username": username,
